@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool Scoping — Charting the Permission Boundary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Lora:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ═══ CSS STARTER (with explorer theme variables) ═══ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0e0f14;
+      --bg-alt: #181a22;
+      --text: #e2ddd3;
+      --accent: #c9944a;
+      --muted: #7a7265;
+      --secondary: #4a7c6f;
+      --display: 'Cinzel', Georgia, serif;
+      --body: 'Lora', Georgia, serif;
+      --mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+      --s-xs: 8px;
+      --s-sm: 13px;
+      --s-md: 21px;
+      --s-lg: 34px;
+      --s-xl: 55px;
+      --s-2xl: 89px;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--body);
+      font-size: 19px;
+      line-height: 1.72;
+      color: var(--text);
+      background: var(--bg);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #progress {
+      position: fixed; top: 0; left: 0;
+      height: 3px; background: var(--accent);
+      z-index: 1000; width: 0;
+    }
+
+    /* ═══ HERO — white intro fading to dark ═══ */
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      align-items: center;
+      padding: var(--s-2xl) 24px;
+      background: #fafafa;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 40vh;
+      background: linear-gradient(to bottom, transparent, var(--bg));
+      pointer-events: none;
+    }
+    .hero-tools {
+      position: absolute; top: 42%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%; max-width: 900px;
+      opacity: 0.12;
+    }
+    .hero-tools svg { width: 100%; height: auto; overflow: hidden; }
+    @keyframes toolDraw {
+      from { stroke-dashoffset: var(--len); }
+      to { stroke-dashoffset: 0; }
+    }
+    @keyframes toolFade {
+      from { opacity: 0; }
+      to { opacity: 0.12; }
+    }
+    .hero-content {
+      position: relative; z-index: 2;
+      width: 100%; max-width: 900px;
+      margin-top: 13vh;
+      text-align: left;
+      padding: 0 var(--s-lg);
+    }
+    .hero h1 {
+      font-family: var(--display);
+      font-size: clamp(42px, 8vw, 89px);
+      font-weight: 900; line-height: 1.0;
+      letter-spacing: 0.02em;
+      color: #1a1a1a;
+      margin-bottom: var(--s-sm);
+    }
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero-sub {
+      font-family: var(--body);
+      font-size: clamp(15px, 1.8vw, 18px);
+      line-height: 1.55; color: #999;
+      max-width: 400px;
+    }
+    .hero-scroll {
+      position: absolute; bottom: var(--s-lg); left: 50%;
+      transform: translateX(-50%); z-index: 2;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .hero-scroll svg { width: 24px; height: 24px; stroke: #bbb; fill: none; stroke-width: 2; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; transform: translateX(-50%) translateY(0); }
+      50% { opacity: 0.7; transform: translateX(-50%) translateY(6px); }
+    }
+
+    /* ═══ ARTICLE SPINE ═══ */
+    .article { max-width: 680px; margin: 0 auto; padding: var(--s-2xl) 24px var(--s-xl); }
+    .article p { margin-bottom: var(--s-md); }
+
+    /* ═══ SECTION HEADERS ═══ */
+    .sh { margin: var(--s-xl) 0 var(--s-sm) 0; }
+    .sh:first-child { margin-top: 0; }
+    .sh-num {
+      font-family: var(--mono); font-size: 13px;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--accent); display: block; margin-bottom: var(--s-xs);
+    }
+    .sh h2 {
+      font-family: var(--display); font-size: clamp(26px, 3.5vw, 38px);
+      font-weight: 700; line-height: 1.15; color: #fff;
+    }
+    .article h3 {
+      font-family: var(--display); font-size: 21px;
+      font-weight: 700; margin: var(--s-lg) 0 var(--s-xs) 0; color: #fff;
+    }
+
+    /* ═══ DROP CAP ═══ */
+    .drop::first-letter {
+      font-family: var(--display); font-size: 55px;
+      float: left; line-height: .8;
+      margin: var(--s-xs) var(--s-xs) 0 0;
+      color: var(--accent); font-weight: 800;
+    }
+
+    /* ═══ INLINE CODE ═══ */
+    code {
+      font-family: var(--mono); font-size: .82em;
+      background: var(--bg-alt); padding: 0 var(--s-xs);
+      border-radius: 3px; color: var(--accent);
+    }
+
+    /* ═══ CODE BLOCKS ═══ */
+    .cb { margin: var(--s-lg) 0; background: #12131a; border-radius: 8px; overflow: hidden; border: 1px solid rgba(201,148,74,0.12); }
+    .cb-wide { margin-left: -85px; margin-right: -85px; }
+    .cb-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: var(--s-xs) var(--s-sm);
+      background: rgba(255,255,255,.03); border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .cb-lang { font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,.35); letter-spacing: .05em; text-transform: uppercase; }
+    .cb-dots { display: flex; gap: 8px; }
+    .cb-dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.1); display: block; }
+    .cb pre { padding: var(--s-sm); margin: 0; overflow-x: auto; font-family: var(--mono); font-size: 14px; line-height: 1.6; color: #c5bfb0; }
+
+    /* ═══ FINDING / CALLOUT ═══ */
+    .finding {
+      margin: var(--s-lg) 0;
+      padding: var(--s-md) var(--s-md) var(--s-md) var(--s-sm);
+      border-left: 3px solid var(--accent); background: var(--bg-alt);
+      border-radius: 0 6px 6px 0;
+    }
+    .finding p { margin: 0; }
+
+    /* ═══ PULL QUOTE ═══ */
+    .pq { margin: var(--s-xl) -210px; padding: var(--s-lg); border-top: 3px solid var(--accent); border-bottom: 3px solid var(--accent); }
+    .pq p { font-family: var(--display); font-size: clamp(22px, 2.8vw, 32px); line-height: 1.35; font-weight: 700; margin: 0; text-align: center; color: #fff; }
+
+    /* ═══ COLOR DIVIDER ═══ */
+    .turn {
+      margin: var(--s-xl) -210px; padding: var(--s-xl) var(--s-lg);
+      background: linear-gradient(135deg, var(--secondary), #2a5a4f);
+      color: #fff; text-align: center; position: relative; overflow: hidden;
+    }
+    .turn::before {
+      content: ''; position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L60 30L30 60L0 30Z' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E");
+      background-size: 60px 60px;
+    }
+    .turn h3 { font-family: var(--display); font-size: clamp(21px, 3vw, 34px); font-weight: 700; line-height: 1.25; max-width: 540px; margin: 0 auto; position: relative; color: #fff; }
+    .turn p { position: relative; max-width: 540px; margin: var(--s-sm) auto 0; font-size: 17px; color: rgba(255,255,255,0.8); }
+
+    /* ═══ ALT-BG SECTION ═══ */
+    .alt { margin: var(--s-xl) -85px; padding: var(--s-lg) 85px; background: var(--bg-alt); border-radius: 8px; }
+    .alt .sh { margin-top: 0; }
+    .alt p:last-child { margin-bottom: 0; }
+
+    /* ═══ ANNOTATED DIAGRAM ═══ */
+    .diagram { margin: var(--s-lg) -85px; position: relative; }
+    .diagram svg { width: 100%; height: auto; display: block; }
+
+    /* ═══ STAT CALLOUTS ═══ */
+    .stat-row {
+      margin: var(--s-lg) -85px;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: var(--s-sm); text-align: center;
+    }
+    .stat-card {
+      padding: var(--s-md) var(--s-sm);
+      background: var(--bg-alt); border-radius: 8px;
+      border: 1px solid rgba(201,148,74,0.08);
+    }
+    .stat-icon { font-size: 34px; margin-bottom: var(--s-xs); display: block; }
+    .stat-num {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(34px, 5vw, 55px); line-height: 1;
+      color: var(--accent);
+    }
+    .stat-label {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--muted); margin-top: var(--s-xs);
+      letter-spacing: .04em; text-transform: uppercase;
+      line-height: 1.4;
+    }
+
+    /* ═══ SCROLLYTELLING ═══ */
+    .scroll-stage {
+      margin: var(--s-xl) auto;
+      max-width: 1100px;
+      position: relative;
+      display: grid; grid-template-columns: 1fr 1fr;
+      min-height: 100vh;
+      padding: 0 24px;
+    }
+    .scroll-visual {
+      position: sticky; top: 0; height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: var(--s-lg);
+      background: var(--bg-alt);
+    }
+    .scroll-visual svg { max-width: 100%; max-height: 80vh; }
+    .scroll-steps { padding: 40vh var(--s-lg) 40vh var(--s-md); }
+    .scroll-step { min-height: 60vh; display: flex; align-items: center; opacity: .3; transition: opacity .4s ease; }
+    .scroll-step.active { opacity: 1; }
+    .scroll-step p {
+      font-size: 18px; line-height: 1.6;
+      background: var(--bg); padding: var(--s-md);
+      border-radius: 6px; border: 1px solid rgba(201,148,74,0.1);
+    }
+    .scroll-step p code { font-size: 14px; }
+
+    /* ═══ CARD GRID (Glossary) ═══ */
+    .cards {
+      margin: var(--s-lg) -85px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--s-sm);
+    }
+    .card {
+      background: var(--bg-alt); border-radius: 8px;
+      padding: var(--s-md); overflow: hidden;
+      border: 1px solid rgba(201,148,74,0.06);
+    }
+    .card h3 { font-family: var(--mono); font-size: 14px; font-weight: 500; margin: 0 0 var(--s-xs); color: var(--accent); }
+    .card p { font-size: 15px; color: var(--muted); margin: 0; line-height: 1.5; }
+
+    /* ═══ LISTS ═══ */
+    .article ul { margin: 0 0 var(--s-md); padding-left: var(--s-md); }
+    .article li { margin-bottom: var(--s-xs); }
+
+    /* ═══ ASSUMPTION BADGES ═══ */
+    .assumptions { display: flex; gap: var(--s-sm); margin-bottom: var(--s-lg); flex-wrap: wrap; }
+    .assumption {
+      font-family: var(--mono); font-size: 13px;
+      padding: var(--s-xs) var(--s-sm);
+      background: rgba(201,148,74,0.08); border: 1px solid rgba(201,148,74,0.2);
+      border-radius: 3px; color: var(--accent); letter-spacing: 0.02em;
+    }
+
+    /* ═══ FIGURE ═══ */
+    .fig { margin: var(--s-lg) 0; }
+    .fig-wide { margin-left: -85px; margin-right: -85px; }
+    .fig-full { margin-left: -210px; margin-right: -210px; }
+    .fig img { width: 100%; height: auto; display: block; border-radius: 6px; }
+    .fig-full img { border-radius: 0; }
+    .fig figcaption { font-family: var(--mono); font-size: 13px; line-height: 1.5; color: var(--muted); margin-top: var(--s-xs); }
+
+    /* ═══ IMAGE BREAK ═══ */
+    .img-break { margin: var(--s-xl) -210px; height: 280px; position: relative; overflow: hidden; background: var(--bg-alt); }
+    .img-break img { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.35) saturate(0.5); }
+    .img-break-overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, var(--bg) 0%, transparent 25%, transparent 75%, var(--bg) 100%); }
+
+    /* ═══ HORIZONTAL RULE ═══ */
+    .rule { border: none; border-top: 1px solid rgba(201,148,74,0.15); margin: var(--s-xl) 0; }
+
+    /* ═══ FOOTER ═══ */
+    .article-footer {
+      margin-top: var(--s-xl); padding-top: var(--s-lg);
+      border-top: 3px solid rgba(255,255,255,0.1);
+      font-size: 14px; color: var(--muted); text-align: center;
+    }
+    .article-footer p { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; }
+
+    /* ═══ SVG ANIMATION HELPERS ═══ */
+    .draw { stroke-dasharray: var(--len, 1000); stroke-dashoffset: var(--len, 1000); transition: stroke-dashoffset 1.2s ease; }
+    .draw.v { stroke-dashoffset: 0; }
+    .grow { transform: scaleY(0); transform-origin: bottom; transition: transform .8s ease; }
+    .grow.v { transform: scaleY(1); }
+    .fade-up { opacity: 0; transform: translateY(21px); transition: opacity .6s ease, transform .6s ease; }
+    .fade-up.v { opacity: 1; transform: translateY(0); }
+
+    /* ═══ SCROLL REVEALS ═══ */
+    .r { opacity: 0; transform: translateY(var(--s-sm)); transition: opacity .5s ease, transform .5s ease; }
+    .r.v { opacity: 1; transform: translateY(0); }
+
+    /* ═══ CHAPTER NAV ═══ */
+    .nav { position: fixed; right: var(--s-md); top: 50%; transform: translateY(-50%); z-index: 100; display: flex; flex-direction: column; gap: var(--s-xs); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); background: transparent; cursor: pointer; transition: all .25s; padding: 0; appearance: none; }
+    .dot.on { background: var(--accent); border-color: var(--accent); }
+
+    /* ═══ REDUCED MOTION ═══ */
+    @media (prefers-reduced-motion: reduce) {
+      .r, .draw, .grow, .fade-up { opacity: 1; transform: none; transition: none; stroke-dashoffset: 0; }
+      html { scroll-behavior: auto; }
+      .hero-tools, .hero-tools svg * { animation: none !important; opacity: 0.12 !important; }
+      .hero-scroll { animation: none; }
+      .scroll-step { opacity: 1; }
+    }
+
+    /* ═══ MEDIUM SCREENS — constrain wide elements ═══ */
+    @media (max-width: 1100px) and (min-width: 769px) {
+      .pq, .turn, .img-break { margin-left: -85px; margin-right: -85px; }
+    }
+
+    /* ═══ MOBILE ═══ */
+    @media (max-width: 768px) {
+      body { font-size: 17px; }
+      .article { padding: var(--s-xl) var(--s-md) var(--s-lg); }
+      .sh { margin-top: var(--s-lg); }
+      .cb, .cb-wide, .alt, .diagram, .cards, .fig-wide, .stat-row { margin-left: -21px; margin-right: -21px; border-radius: 0; }
+      .alt { padding-left: var(--s-md); padding-right: var(--s-md); }
+      .pq, .turn, .fig-full, .img-break { margin-left: -21px; margin-right: -21px; padding: var(--s-md); }
+      .pq p { font-size: 19px; }
+      .nav { display: none; }
+      .img-break { height: 180px; }
+      .hero-tools { width: 100%; }
+      .stat-row { grid-template-columns: 1fr 1fr; }
+      .scroll-stage { grid-template-columns: 1fr; max-width: 100%; padding: 0; }
+      .scroll-visual { position: sticky; top: 0; height: 40vh; }
+      .scroll-steps { padding: var(--s-md); }
+      .scroll-step { min-height: 55vh; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<nav class="nav" id="nav" aria-label="Article sections">
+  <button class="dot on" data-section="0" aria-label="Hero"></button>
+  <button class="dot" data-section="1" aria-label="The Setup"></button>
+  <button class="dot" data-section="2" aria-label="Traits and Scopes"></button>
+  <button class="dot" data-section="3" aria-label="How It Works"></button>
+  <button class="dot" data-section="4" aria-label="Example"></button>
+  <button class="dot" data-section="5" aria-label="Observability"></button>
+  <button class="dot" data-section="6" aria-label="Glossary"></button>
+</nav>
+
+<!-- ═══════════════════════════ HERO ═══════════════════════════ -->
+<header class="hero" id="hero">
+  <!-- Animated tool silhouettes — draw themselves in, then sit quietly -->
+  <div class="hero-tools" style="animation: toolFade 2s ease 0.5s both; opacity: 0">
+    <svg viewBox="0 0 900 200" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <!-- Hammer 1 -->
+      <g style="--len:200; stroke-dasharray:200; stroke-dashoffset:200; animation: toolDraw 1.5s ease 0.3s forwards">
+        <rect x="60" y="50" width="34" height="24" rx="3"/>
+        <line x1="77" y1="74" x2="77" y2="150"/>
+      </g>
+      <!-- Wrench -->
+      <g style="--len:250; stroke-dasharray:250; stroke-dashoffset:250; animation: toolDraw 1.5s ease 0.6s forwards">
+        <circle cx="200" cy="58" r="14"/>
+        <circle cx="200" cy="58" r="6"/>
+        <line x1="200" y1="72" x2="200" y2="140"/>
+        <circle cx="200" cy="148" r="10"/>
+        <circle cx="200" cy="148" r="4"/>
+      </g>
+      <!-- Screwdriver -->
+      <g style="--len:200; stroke-dasharray:200; stroke-dashoffset:200; animation: toolDraw 1.5s ease 0.9s forwards">
+        <polygon points="320,45 330,45 328,65 322,65"/>
+        <line x1="325" y1="65" x2="325" y2="135"/>
+        <rect x="319" y="135" width="12" height="18" rx="2"/>
+      </g>
+      <!-- Pliers -->
+      <g style="--len:280; stroke-dasharray:280; stroke-dashoffset:280; animation: toolDraw 1.5s ease 1.2s forwards">
+        <path d="M440,50 Q455,70 455,85 L445,95 L435,85 Q435,70 440,50Z"/>
+        <path d="M460,50 Q445,70 445,85 L455,95 L465,85 Q465,70 460,50Z"/>
+        <line x1="445" y1="95" x2="430" y2="155"/>
+        <line x1="455" y1="95" x2="470" y2="155"/>
+      </g>
+      <!-- Hammer 2 (slightly different) -->
+      <g style="--len:200; stroke-dasharray:200; stroke-dashoffset:200; animation: toolDraw 1.5s ease 1.5s forwards">
+        <path d="M555,48 L595,48 L598,58 L595,68 L555,68 L552,58Z"/>
+        <line x1="575" y1="68" x2="575" y2="152"/>
+      </g>
+      <!-- Saw -->
+      <g style="--len:300; stroke-dasharray:300; stroke-dashoffset:300; animation: toolDraw 1.5s ease 1.8s forwards">
+        <rect x="685" y="45" width="30" height="22" rx="3"/>
+        <line x1="700" y1="67" x2="700" y2="75"/>
+        <path d="M680,75 L720,75 L718,80 L714,75 L710,80 L706,75 L702,80 L698,75 L694,80 L690,75 L686,80 L682,75"/>
+        <line x1="700" y1="80" x2="700" y2="82"/>
+      </g>
+      <!-- Hex key -->
+      <g style="--len:150; stroke-dasharray:150; stroke-dashoffset:150; animation: toolDraw 1.5s ease 2.1s forwards">
+        <path d="M820,50 L820,110 L850,110"/>
+      </g>
+    </svg>
+  </div>
+  <div class="hero-content">
+    <h1>Tool<br><em>Scoping</em></h1>
+    <p class="hero-sub">Securely enable agents</p>
+  </div>
+  <div class="hero-scroll">
+    <svg viewBox="0 0 24 24"><polyline points="6,9 12,15 18,9"/></svg>
+  </div>
+</header>
+
+<!-- ═══════════════════════════ ARTICLE ═══════════════════════════ -->
+<article class="article" id="article">
+
+  <!-- ═══ Section 1: The Setup ═══ -->
+  <div class="sh r" id="s1">
+    <span class="sh-num">I &middot; The Setup</span>
+    <h2>The Container Insight</h2>
+  </div>
+
+  <div class="assumptions r">
+    <span class="assumption">Agents live in a container</span>
+    <span class="assumption">No direct access to the outside world besides tools</span>
+  </div>
+
+  <p class="drop r">In production, Barry&rsquo;s agents run in containers. They can&rsquo;t touch the filesystem, make network requests, send Slack messages, or do anything else directly. The only way they interact with the outside world is through MCP tools served from the host.</p>
+
+  <!-- ═══ DIAGRAM: Container → MCP → Outside World ═══ -->
+  <div class="diagram r" role="img" aria-label="Container has no direct access — all IO flows through MCP tools to the outside world">
+    <svg viewBox="0 0 850 200" xmlns="http://www.w3.org/2000/svg">
+      <rect x="30" y="30" width="240" height="140" rx="8" fill="rgba(201,148,74,0.06)" stroke="rgba(201,148,74,0.2)" stroke-width="1.5" stroke-dasharray="8 5"/>
+      <text x="150" y="60" text-anchor="middle" fill="#c9944a" font-family="'JetBrains Mono',monospace" font-size="11" letter-spacing="0.1em">CONTAINER</text>
+      <text x="150" y="95" text-anchor="middle" fill="#e2ddd3" font-family="'Lora',serif" font-size="14">Agent runs here</text>
+      <text x="150" y="115" text-anchor="middle" fill="#7a7265" font-family="'Lora',serif" font-size="13">No direct outside access</text>
+
+      <line x1="270" y1="100" x2="338" y2="100" stroke="rgba(201,148,74,0.4)" stroke-width="1.5"/>
+      <polygon points="336,95 346,100 336,105" fill="rgba(201,148,74,0.4)"/>
+
+      <rect x="350" y="40" width="150" height="120" rx="8" fill="rgba(74,124,111,0.12)" stroke="rgba(74,124,111,0.4)" stroke-width="1.5"/>
+      <text x="425" y="68" text-anchor="middle" fill="#4a7c6f" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">MCP TOOLS</text>
+      <text x="425" y="92" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="10">filesystem.read</text>
+      <text x="425" y="108" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="10">git.status</text>
+      <text x="425" y="124" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="10">sentry.search</text>
+      <text x="425" y="148" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="9">filtered per session</text>
+
+      <line x1="500" y1="100" x2="558" y2="100" stroke="rgba(74,124,111,0.4)" stroke-width="1.5"/>
+      <polygon points="556,95 566,100 556,105" fill="rgba(74,124,111,0.4)"/>
+
+      <rect x="570" y="30" width="250" height="140" rx="8" fill="rgba(226,221,211,0.03)" stroke="rgba(226,221,211,0.15)" stroke-width="1"/>
+      <text x="695" y="60" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">OUTSIDE WORLD</text>
+      <text x="695" y="95" text-anchor="middle" fill="rgba(226,221,211,0.4)" font-family="'JetBrains Mono',monospace" font-size="10">filesystem &middot; network</text>
+      <text x="695" y="112" text-anchor="middle" fill="rgba(226,221,211,0.4)" font-family="'JetBrains Mono',monospace" font-size="10">bash &middot; git &middot; slack</text>
+      <text x="695" y="129" text-anchor="middle" fill="rgba(226,221,211,0.4)" font-family="'JetBrains Mono',monospace" font-size="10">sentry &middot; datadog</text>
+    </svg>
+  </div>
+
+  <div class="finding r">
+    <p><strong>If a tool doesn&rsquo;t exist, the agent can&rsquo;t do it.</strong> We don&rsquo;t need to monitor and block bad behavior &mdash; we just don&rsquo;t give the agent the tools to misbehave in the first place.</p>
+  </div>
+
+  <!-- ═══ Section 2: Traits & Scopes ═══ -->
+  <div class="sh r" id="s2">
+    <span class="sh-num">II &middot; The Model</span>
+    <h2>Traits &amp; Scopes</h2>
+  </div>
+
+  <p class="r">Every task has <strong>traits</strong> and optionally a <strong>scope</strong>. Traits are what you <em>give</em> the agent &mdash; capability bundles. A task with <code>debug</code> gets Sentry and Datadog tools. A task with <code>slack</code> gets messaging. A task with just <code>core</code> gets filesystem, git, system, and other foundational tools.</p>
+
+  <!-- ═══ DUALITY DIAGRAM: Traits vs Scopes ═══ -->
+  <div class="diagram r" role="img" aria-label="Traits are additive (more = more access), Scopes are subtractive (can only restrict)">
+    <svg viewBox="0 0 850 260" xmlns="http://www.w3.org/2000/svg">
+      <!-- Traits side -->
+      <rect x="40" y="20" width="340" height="200" rx="8" fill="rgba(201,148,74,0.06)" stroke="rgba(201,148,74,0.25)" stroke-width="1.5"/>
+      <text x="210" y="50" text-anchor="middle" fill="#c9944a" font-family="'Cinzel',serif" font-size="14" font-weight="700" letter-spacing="0.12em">TRAITS ENABLE</text>
+      <text x="210" y="80" text-anchor="middle" fill="#e2ddd3" font-family="'Lora',serif" font-size="14">Additive. More traits = more access.</text>
+      <text x="210" y="110" text-anchor="middle" fill="rgba(201,148,74,0.7)" font-family="'JetBrains Mono',monospace" font-size="11">core &rarr; filesystem, git, system, &amp; more</text>
+      <text x="210" y="130" text-anchor="middle" fill="rgba(201,148,74,0.7)" font-family="'JetBrains Mono',monospace" font-size="11">debug &rarr; sentry, datadog (read)</text>
+      <text x="210" y="150" text-anchor="middle" fill="rgba(201,148,74,0.7)" font-family="'JetBrains Mono',monospace" font-size="11">slack &rarr; slack (readwrite)</text>
+      <text x="210" y="180" text-anchor="middle" fill="#7a7265" font-family="'Lora',serif" font-size="13">Most permissive level wins.</text>
+      <text x="210" y="200" text-anchor="middle" fill="#7a7265" font-family="'Lora',serif" font-size="13">No trait = no tools.</text>
+
+      <!-- Arrow -->
+      <text x="425" y="125" text-anchor="middle" fill="rgba(201,148,74,0.4)" font-family="'Cinzel',serif" font-size="21">&rarr;</text>
+
+      <!-- Scopes side -->
+      <rect x="470" y="20" width="340" height="200" rx="8" fill="rgba(74,124,111,0.06)" stroke="rgba(74,124,111,0.25)" stroke-width="1.5"/>
+      <text x="640" y="50" text-anchor="middle" fill="#4a7c6f" font-family="'Cinzel',serif" font-size="14" font-weight="700" letter-spacing="0.12em">SCOPES LIMIT</text>
+      <text x="640" y="80" text-anchor="middle" fill="#e2ddd3" font-family="'Lora',serif" font-size="14">Subtractive. Can only restrict.</text>
+      <text x="640" y="110" text-anchor="middle" fill="rgba(74,124,111,0.7)" font-family="'JetBrains Mono',monospace" font-size="11">forbid specific tools</text>
+      <text x="640" y="130" text-anchor="middle" fill="rgba(74,124,111,0.7)" font-family="'JetBrains Mono',monospace" font-size="11">downgrade: readwrite &rarr; read</text>
+      <text x="640" y="150" text-anchor="middle" fill="rgba(74,124,111,0.7)" font-family="'JetBrains Mono',monospace" font-size="11">exclude tools by namespace or name</text>
+      <text x="640" y="180" text-anchor="middle" fill="#7a7265" font-family="'Lora',serif" font-size="13">Can never grant access.</text>
+      <text x="640" y="200" text-anchor="middle" fill="#7a7265" font-family="'Lora',serif" font-size="13">Only narrows what traits gave.</text>
+    </svg>
+  </div>
+
+  <p class="r">Every tool has a <strong>namespace</strong> (the group: <code>filesystem</code>, <code>git</code>, <code>slack</code>) and an <strong>access level</strong> (<code>read</code> or <code>write</code>). When a trait grants read-only access to a namespace, only read tools from that namespace are available.</p>
+
+  <!-- ═══ Graphic break: tool silhouettes ═══ -->
+  <div class="diagram r" style="text-align: center; padding: var(--s-lg) 0;">
+    <svg viewBox="0 0 850 60" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="rgba(201,148,74,0.2)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Decorative tool silhouettes">
+      <line x1="0" y1="30" x2="850" y2="30" stroke="rgba(201,148,74,0.06)"/>
+      <g transform="translate(140,10)"><rect x="0" y="5" width="18" height="12" rx="2"/><line x1="9" y1="17" x2="9" y2="40"/></g>
+      <g transform="translate(290,10)"><circle cx="9" cy="8" r="7"/><circle cx="9" cy="8" r="3"/><line x1="9" y1="15" x2="9" y2="35"/><circle cx="9" cy="40" r="5"/></g>
+      <g transform="translate(425,12)"><path d="M0,18 L0,38 L13,38"/></g>
+      <g transform="translate(555,8)"><polygon points="6,0 12,0 11,10 7,10"/><line x1="9" y1="10" x2="9" y2="35"/><rect x="5" y="35" width="8" height="10" rx="1"/></g>
+      <g transform="translate(700,10)"><circle cx="9" cy="20" r="8"/><circle cx="9" cy="20" r="3"/><line x1="9" y1="10" x2="9" y2="8"/><line x1="9" y1="30" x2="9" y2="32"/><line x1="0" y1="20" x2="-2" y2="20"/><line x1="18" y1="20" x2="20" y2="20"/></g>
+    </svg>
+  </div>
+
+  <!-- ═══ Section 3: How It Works (SCROLLYTELLING) ═══ -->
+  <div class="sh r" id="s3">
+    <span class="sh-num">III &middot; How It Works</span>
+    <h2>The Flow</h2>
+  </div>
+
+  <p class="r">When a prompt runs for a task, the MCP server enforces everything. Scroll through each stage:</p>
+
+</article>
+
+<!-- Scrollytelling -->
+<div class="scroll-stage" id="scroll-flow">
+  <div class="scroll-visual">
+    <svg id="flow-svg" viewBox="0 0 420 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="5-step pipeline: task created → traits looked up → namespaces resolved → scope applied → tools registered">
+      <!-- Step 1: Task created -->
+      <g id="flow-step-1" opacity="0.15">
+        <rect x="80" y="10" width="260" height="55" rx="8" fill="rgba(201,148,74,0.12)" stroke="rgba(201,148,74,0.4)" stroke-width="1.5"/>
+        <text x="210" y="32" text-anchor="middle" fill="#c9944a" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">TASK CREATED</text>
+        <text x="210" y="52" text-anchor="middle" fill="#e2ddd3" font-family="'JetBrains Mono',monospace" font-size="11">traits: ["core", "debug"]</text>
+      </g>
+      <!-- Arrow -->
+      <g id="flow-arrow-1" opacity="0.15">
+        <line x1="210" y1="65" x2="210" y2="95" stroke="rgba(201,148,74,0.4)" stroke-width="1.5"/>
+        <polygon points="204,93 210,103 216,93" fill="rgba(201,148,74,0.4)"/>
+      </g>
+      <!-- Step 2: MCP reads from DB -->
+      <g id="flow-step-2" opacity="0.15">
+        <rect x="60" y="105" width="300" height="55" rx="8" fill="rgba(74,124,111,0.12)" stroke="rgba(74,124,111,0.4)" stroke-width="1.5"/>
+        <text x="210" y="127" text-anchor="middle" fill="#4a7c6f" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">MCP READS TRAITS FROM DB</text>
+        <text x="210" y="147" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">resolves namespace:access map</text>
+      </g>
+      <!-- Arrow -->
+      <g id="flow-arrow-2" opacity="0.15">
+        <line x1="210" y1="160" x2="210" y2="190" stroke="rgba(201,148,74,0.4)" stroke-width="1.5"/>
+        <polygon points="204,188 210,198 216,188" fill="rgba(201,148,74,0.4)"/>
+      </g>
+      <!-- Step 3: Namespace map -->
+      <g id="flow-step-3" opacity="0.15">
+        <rect x="50" y="200" width="320" height="100" rx="8" fill="rgba(201,148,74,0.06)" stroke="rgba(201,148,74,0.2)" stroke-width="1.5"/>
+        <text x="210" y="225" text-anchor="middle" fill="#c9944a" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">NAMESPACE:ACCESS</text>
+        <text x="210" y="248" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">filesystem: readwrite</text>
+        <text x="210" y="265" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">git: readwrite &middot; sentry: read</text>
+        <text x="210" y="288" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="10">scope: forbid tools, downgrade access</text>
+      </g>
+      <!-- Arrow -->
+      <g id="flow-arrow-3" opacity="0.15">
+        <line x1="210" y1="300" x2="210" y2="330" stroke="rgba(201,148,74,0.4)" stroke-width="1.5"/>
+        <polygon points="204,328 210,338 216,328" fill="rgba(201,148,74,0.4)"/>
+      </g>
+      <!-- Step 4: Register tools -->
+      <g id="flow-step-4" opacity="0.15">
+        <rect x="60" y="340" width="300" height="55" rx="8" fill="rgba(74,124,111,0.12)" stroke="rgba(74,124,111,0.4)" stroke-width="1.5"/>
+        <text x="210" y="362" text-anchor="middle" fill="#4a7c6f" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">REGISTER ALLOWED TOOLS</text>
+        <text x="210" y="382" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">only these exist for this session</text>
+      </g>
+      <!-- Arrow -->
+      <g id="flow-arrow-4" opacity="0.15">
+        <line x1="210" y1="395" x2="210" y2="425" stroke="rgba(201,148,74,0.4)" stroke-width="1.5"/>
+        <polygon points="204,423 210,433 216,423" fill="rgba(201,148,74,0.4)"/>
+      </g>
+      <!-- Step 5: Agent connects -->
+      <g id="flow-step-5" opacity="0.15">
+        <rect x="70" y="435" width="280" height="80" rx="8" fill="rgba(201,148,74,0.08)" stroke="rgba(201,148,74,0.3)" stroke-width="1.5"/>
+        <text x="210" y="460" text-anchor="middle" fill="#c9944a" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="0.08em">AGENT CONNECTS</text>
+        <text x="210" y="480" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">sees only allowed tools</text>
+        <text x="210" y="500" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="10">unregistered tools don&rsquo;t exist</text>
+      </g>
+    </svg>
+  </div>
+  <div class="scroll-steps">
+    <div class="scroll-step active" data-step="1">
+      <p><strong>A task is created</strong> with traits like <code>"core"</code> and <code>"debug"</code>, and optionally a scope with deny patterns. These are stored in the database.</p>
+    </div>
+    <div class="scroll-step" data-step="2">
+      <p><strong>When a prompt runs,</strong> the MCP server looks up the task&rsquo;s traits and scope from the database. This happens on every session init.</p>
+    </div>
+    <div class="scroll-step" data-step="3">
+      <p><strong>Traits resolve to namespaces.</strong> <code>core</code> grants filesystem, git, system, and more at readwrite. <code>debug</code> grants sentry and datadog at read. Scope restrictions &mdash; denied tools, access downgrades &mdash; are applied on top.</p>
+    </div>
+    <div class="scroll-step" data-step="4">
+      <p><strong>Only allowed tools are registered</strong> for this MCP session. Everything else doesn&rsquo;t exist. The agent can&rsquo;t even see tools it isn&rsquo;t allowed to use.</p>
+    </div>
+    <div class="scroll-step" data-step="5">
+      <p><strong>The agent connects</strong> and sees only the tools registered for its session. Unregistered tools don&rsquo;t exist &mdash; the MCP SDK rejects calls to unknown tools before our code even runs.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Resume article -->
+<article class="article">
+
+  <!-- ═══ Section 4: The Example ═══ -->
+  <div class="sh r" id="s4">
+    <span class="sh-num">IV &middot; In Practice</span>
+    <h2>A Concrete Example</h2>
+  </div>
+
+  <p class="r">A task with traits <code>["core", "debug"]</code> and scope <code>{ access: { git: "read" } }</code>.</p>
+
+  <!-- ═══ GETS vs DOES NOT GET — split diagram ═══ -->
+  <div class="diagram r" role="img" aria-label="Split view: what the agent gets vs what it does not get">
+    <svg viewBox="0 0 850 320" xmlns="http://www.w3.org/2000/svg">
+      <!-- GETS -->
+      <rect x="20" y="20" width="395" height="280" rx="8" fill="rgba(74,124,111,0.06)" stroke="rgba(74,124,111,0.25)" stroke-width="1.5"/>
+      <text x="217" y="50" text-anchor="middle" fill="#4a7c6f" font-family="'Cinzel',serif" font-size="14" font-weight="700" letter-spacing="0.12em">AGENT GETS</text>
+      <text x="217" y="80" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">filesystem (read, write, edit, glob, grep)</text>
+      <text x="217" y="100" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="10">full readwrite access</text>
+      <text x="217" y="130" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">system (bash, open)</text>
+      <text x="217" y="160" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">git (status, diff, log) &mdash; read only</text>
+      <text x="217" y="195" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">sentry (search_issues)</text>
+      <text x="217" y="215" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="10">read-only &mdash; cannot create issues</text>
+      <text x="217" y="250" text-anchor="middle" fill="#c5bfb0" font-family="'JetBrains Mono',monospace" font-size="11">datadog (search_logs, query_metrics)</text>
+      <text x="217" y="270" text-anchor="middle" fill="#7a7265" font-family="'JetBrains Mono',monospace" font-size="10">read-only</text>
+
+      <!-- DOES NOT GET -->
+      <rect x="435" y="20" width="395" height="280" rx="8" fill="rgba(201,148,74,0.04)" stroke="rgba(201,148,74,0.15)" stroke-width="1.5" stroke-dasharray="8 5"/>
+      <text x="632" y="50" text-anchor="middle" fill="rgba(201,148,74,0.6)" font-family="'Cinzel',serif" font-size="14" font-weight="700" letter-spacing="0.12em">DOES NOT GET</text>
+      <text x="632" y="90" text-anchor="middle" fill="rgba(226,221,211,0.3)" font-family="'JetBrains Mono',monospace" font-size="11">slack (no trait)</text>
+      <text x="632" y="120" text-anchor="middle" fill="rgba(226,221,211,0.3)" font-family="'JetBrains Mono',monospace" font-size="11">email (no trait)</text>
+      <text x="632" y="150" text-anchor="middle" fill="rgba(226,221,211,0.3)" font-family="'JetBrains Mono',monospace" font-size="11">notion (no trait)</text>
+      <text x="632" y="180" text-anchor="middle" fill="rgba(226,221,211,0.3)" font-family="'JetBrains Mono',monospace" font-size="11">linear (no trait)</text>
+      <text x="632" y="220" text-anchor="middle" fill="rgba(226,221,211,0.25)" font-family="'Lora',serif" font-size="13" font-style="italic">These tools don&rsquo;t exist</text>
+      <text x="632" y="240" text-anchor="middle" fill="rgba(226,221,211,0.25)" font-family="'Lora',serif" font-size="13" font-style="italic">for this session.</text>
+    </svg>
+  </div>
+
+  <!-- ═══ Turning Point: Observability ═══ -->
+  <div class="turn r" id="s5">
+    <h3>All Agent IO Is Observable</h3>
+    <p>Because the container has no direct outside access, everything flows through MCP tools</p>
+  </div>
+
+  <p class="r">Every single thing the agent does goes through an MCP tool call. Every tool call is logged. There are no side channels &mdash; no sneaky <code>curl</code> to an external API, no writing to a file the host reads. If the agent did it, we can see it in the logs.</p>
+
+  <div class="finding r">
+    <p><strong>Adding a new tool?</strong> Define it with a namespace and access level. It automatically becomes available to any task with a matching trait. <strong>Adding a new trait?</strong> Create a row in the database. No code changes needed.</p>
+  </div>
+
+  <!-- ═══ Section 6: Glossary ═══ -->
+  <div class="sh r" id="s6">
+    <span class="sh-num">V &middot; Glossary</span>
+    <h2>Terms</h2>
+  </div>
+
+  <div class="cards r">
+    <div class="card fade-up">
+      <h3>Agent Trait</h3>
+      <p>Named capability granted to a task. Defines which tools are available and at what access level.</p>
+    </div>
+    <div class="card fade-up">
+      <h3>Agent Scope</h3>
+      <p>Restrictions on capabilities. Can only take away what traits have granted.</p>
+    </div>
+    <div class="card fade-up">
+      <h3>Tool Namespace</h3>
+      <p>The group a tool belongs to (filesystem, git, sentry). Traits grant access at this level.</p>
+    </div>
+    <div class="card fade-up">
+      <h3>Tool Access</h3>
+      <p>Whether a tool is <code>read</code> (observes) or <code>write</code> (modifies). Read-mode traits only get read tools.</p>
+    </div>
+    <div class="card fade-up">
+      <h3>Toolset</h3>
+      <p>The filtered set of tools provided to the agent for a given session.</p>
+    </div>
+    <div class="card fade-up">
+      <h3>Denied Tools</h3>
+      <p>Tools excluded by scope &mdash; never registered, never visible to the agent.</p>
+    </div>
+  </div>
+
+  <footer class="article-footer">
+    <p>Tool Scoping &middot; Barry</p>
+  </footer>
+
+</article>
+
+<script>
+  // ═══ Progress bar ═══
+  const progress = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.width = h > 0 ? (window.scrollY / h * 100) + '%' : '0%';
+  }, { passive: true });
+
+  // ═══ Scroll reveals (.r, .draw, .grow, .fade-up) ═══
+  const revealIO = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('v'); revealIO.unobserve(e.target); } });
+  }, { threshold: 0.05, rootMargin: '0px 0px -20px 0px' });
+  document.querySelectorAll('.r, .draw, .grow, .fade-up').forEach(el => revealIO.observe(el));
+
+  // ═══ Chapter nav ═══
+  const sectionIds = ['hero','s1','s2','s3','s4','s5','s6'];
+  const navSections = sectionIds.map(id => document.getElementById(id)).filter(Boolean);
+  const dots = document.querySelectorAll('.dot');
+  const navIO = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const idx = sectionIds.indexOf(e.target.id);
+        if (idx >= 0) dots.forEach((d, i) => d.classList.toggle('on', i === idx));
+      }
+    });
+  }, { threshold: 0.3, rootMargin: '-20% 0px -60% 0px' });
+  navSections.forEach(s => navIO.observe(s));
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const idx = parseInt(d.dataset.section);
+      const target = document.getElementById(sectionIds[idx]);
+      if (target) target.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  // ═══ Scrollytelling: flow diagram step activation ═══
+  const flowSteps = document.querySelectorAll('.scroll-step');
+  const flowGroups = {
+    1: ['flow-step-1'],
+    2: ['flow-step-1', 'flow-arrow-1', 'flow-step-2'],
+    3: ['flow-step-1', 'flow-arrow-1', 'flow-step-2', 'flow-arrow-2', 'flow-step-3'],
+    4: ['flow-step-1', 'flow-arrow-1', 'flow-step-2', 'flow-arrow-2', 'flow-step-3', 'flow-arrow-3', 'flow-step-4'],
+    5: ['flow-step-1', 'flow-arrow-1', 'flow-step-2', 'flow-arrow-2', 'flow-step-3', 'flow-arrow-3', 'flow-step-4', 'flow-arrow-4', 'flow-step-5'],
+  };
+  const allFlowIds = ['flow-step-1','flow-arrow-1','flow-step-2','flow-arrow-2','flow-step-3','flow-arrow-3','flow-step-4','flow-arrow-4','flow-step-5'];
+
+  function updateFlow(activeStep) {
+    const visible = flowGroups[activeStep] || [];
+    allFlowIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.setAttribute('opacity', visible.includes(id) ? '1' : '0.15');
+    });
+  }
+
+  const stepIO = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const step = parseInt(e.target.dataset.step);
+        flowSteps.forEach(s => s.classList.toggle('active', parseInt(s.dataset.step) === step));
+        updateFlow(step);
+      }
+    });
+  }, { threshold: 0.5, rootMargin: '-30% 0px -30% 0px' });
+  flowSteps.forEach(s => stepIO.observe(s));
+</script>
+
+</body>
+</html>
